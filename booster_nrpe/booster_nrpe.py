@@ -222,6 +222,7 @@ class NRPEAsyncClient(asyncore.dispatcher, object):
                     # output the error in debug mode for now.
                     logger.debug('Error on SSL shutdown : %s ; %s',
                                  details, traceback.format_exc())
+                    logger.debug("... host=\'{0}' port={1}".format(self.nrpe.host, self.nrpe.port) )
                     # keep retry.
             sock = self._socket
         else:
@@ -380,19 +381,34 @@ class Nrpe_poller(BaseModule):
 
     # Get new checks
     # REF: doc/shinken-action-queues.png (3)
-    def get_new_checks(self):
+    def get_new_checks(self, has_running=False):
+
+        ## if main loop is not waitinf for something block in incomming actions.
+        block = False
+        timeout = 0
+        inserted = 0
+
+        if not has_running:
+            block = True
+            timeout = 0.1
         while True:
             try:
-                msg = self.s.get(block=False)
+                msg = self.s.get(block, timeout)
             except Empty:
-                return
+                return inserted
+
             if msg is not None:
+                inserted = 1
                 check = msg.get_data()
                 self.add_new_check(check)
+
+        return inserted
 
     # Launch checks that are in status
     # REF: doc/shinken-action-queues.png (4)
     def launch_new_checks(self):
+
+        launched = 0
         for check in self.checks:
             now = time.time()
             if check.status == 'queue':
@@ -423,10 +439,8 @@ class Nrpe_poller(BaseModule):
                     check.execution_time = 0
                     continue
 
-                # if no command is specified, check_nrpe
-                # sends _NRPE_CHECK as default command.
                 if command is None:
-                    command = '_NRPE_CHECK'
+                    command='_NRPE_CHECK'
 
                 # Ok we are good, we go on
                 total_args = [command]
@@ -434,6 +448,8 @@ class Nrpe_poller(BaseModule):
                 cmd = r'!'.join(total_args)
                 check.con = NRPEAsyncClient(host, port, use_ssl,
                                             timeout, unknown_on_timeout, cmd)
+                launched += 1
+        return launched
 
     # Check the status of checks
     # if done, return message finished :)
@@ -484,6 +500,9 @@ class Nrpe_poller(BaseModule):
         for chk in to_del:
             self.checks.remove(chk)
 
+        # count the number of check still in list
+        return len(self.checks)
+
     # Wrapper function for work in order to catch the exception
     # to see the real work, look at do_work
     def work(self, s, returns_queue, c):
@@ -509,6 +528,11 @@ class Nrpe_poller(BaseModule):
         self.s = s
         self.t_each_loop = time.time()
 
+        has_running = False
+        received = 0
+        launched = 0
+        waiting = 0
+
         while True:
 
             # We check if all new things in connections
@@ -520,12 +544,19 @@ class Nrpe_poller(BaseModule):
             # take new jobs, we just finished the current one
             if not self.i_am_dying:
                 # REF: doc/shinken-action-queues.png (3)
-                self.get_new_checks()
+                received = self.get_new_checks(has_running)
+
                 # REF: doc/shinken-action-queues.png (4)
-                self.launch_new_checks()
+                launched = self.launch_new_checks()
 
             # REF: doc/shinken-action-queues.png (5)
-            self.manage_finished_checks()
+            waiting = self.manage_finished_checks()
+
+            if received > 0 or launched > 0 or waiting > 0:
+                has_running = True
+                logger.debug("[nrpebooster][do_work] received={0} launched={1} waiting={2}".format(received, launched, waiting) )
+            else:
+                has_running = False
 
             # Now get order from master, if any..
             try:
@@ -536,4 +567,5 @@ class Nrpe_poller(BaseModule):
                 if msg.get_type() == 'Die':
                     logger.info("[NRPEPoller] Dad says we should die...")
                     break
+
 
