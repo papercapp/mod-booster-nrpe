@@ -440,7 +440,7 @@ class Nrpe_poller(BaseModule):
                     continue
 
                 if command is None:
-                    command='_NRPE_CHECK'
+                    command ='_NRPE_CHECK'
 
                 # Ok we are good, we go on
                 total_args = [command]
