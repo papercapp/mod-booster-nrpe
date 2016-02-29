@@ -438,9 +438,10 @@ class Nrpe_poller(BaseModule):
                                       'is not correct.', 8012)
                     check.execution_time = 0
                     continue
-
+                # if no command is specified, check_nrpe
+                # sends _NRPE_CHECK as default command.
                 if command is None:
-                    command ='_NRPE_CHECK'
+                    command = '_NRPE_CHECK'
 
                 # Ok we are good, we go on
                 total_args = [command]
