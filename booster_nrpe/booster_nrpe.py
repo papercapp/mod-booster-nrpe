@@ -438,6 +438,7 @@ class Nrpe_poller(BaseModule):
                                       'is not correct.', 8012)
                     check.execution_time = 0
                     continue
+
                 # if no command is specified, check_nrpe
                 # sends _NRPE_CHECK as default command.
                 if command is None:
@@ -568,5 +569,4 @@ class Nrpe_poller(BaseModule):
                 if msg.get_type() == 'Die':
                     logger.info("[NRPEPoller] Dad says we should die...")
                     break
-
 
